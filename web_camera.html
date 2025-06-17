@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>前置摄像头预览</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            background-color: #111;
+            color: white;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            text-align: center;
+        }
+        #camera-container {
+            width: 100%;
+            max-width: 600px;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #camera-preview {
+            width: 100%;
+            height: auto;
+            border-radius: 10px;
+            /* 水平翻转预览，使其看起来像镜子 */
+            transform: scaleX(-1);
+            display: none; /* 默认隐藏 */
+        }
+        #controls {
+            padding: 20px;
+        }
+        #start-button {
+            font-size: 18px;
+            padding: 12px 25px;
+            cursor: pointer;
+            border-radius: 8px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            transition: background-color 0.3s;
+        }
+        #start-button:hover {
+            background-color: #0056b3;
+        }
+        #status-message {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #ffc107;
+            min-height: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="camera-container">
+    <video id="camera-preview" autoplay playsinline muted></video>
+</div>
+
+<div id="controls">
+    <button id="start-button">启动前置摄像头</button>
+    <p id="status-message">请点击按钮以授权并启动摄像头</p>
+</div>
+
+<script>
+    // 获取页面上的元素
+    const videoElement = document.getElementById('camera-preview');
+    const startButton = document.getElementById('start-button');
+    const statusMessage = document.getElementById('status-message');
+
+    // 监听按钮点击事件
+    startButton.addEventListener('click', async () => {
+        // 检查浏览器是否支持 mediaDevices API
+        if (!('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices)) {
+            statusMessage.textContent = '错误：您的浏览器不支持摄像头访问 API。';
+            return;
+        }
+
+        statusMessage.textContent = '正在请求摄像头权限...';
+
+        // 定义要请求的媒体类型和约束
+        // facingMode: 'user' 表示请求前置摄像头
+        // facingMode: 'environment' 表示请求后置摄像头
+        const constraints = {
+            video: {
+                facingMode: 'user', // 使用前置摄像头
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            },
+            audio: false // 我们不需要音频
+        };
+
+        try {
+            // 请求访问摄像头
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+            // 将摄像头捕获的视频流赋值给 video 元素的 srcObject
+            videoElement.srcObject = stream;
+
+            // 一旦视频开始播放，就隐藏按钮和状态消息
+            videoElement.onloadedmetadata = () => {
+                statusMessage.textContent = '摄像头已启动！';
+                videoElement.style.display = 'block'; // 显示 video 元素
+                startButton.style.display = 'none';   // 隐藏按钮
+                // 1秒后淡出状态消息
+                setTimeout(() => { statusMessage.style.transition = 'opacity 1s'; statusMessage.style.opacity = '0'; }, 1000);
+            };
+
+        } catch (error) {
+            // 处理可能发生的错误
+            let errorMessage = '访问摄像头时发生未知错误。';
+            if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                errorMessage = '错误：您拒绝了摄像头访问权限。';
+            } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+                errorMessage = '错误：未找到前置摄像头。';
+            } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+                errorMessage = '错误：无法读取摄像头。它可能正在被其他应用使用。';
+            } else if (error.name === 'OverconstrainedError' || error.name === 'ConstraintNotSatisfiedError') {
+                errorMessage = '错误：找不到满足要求（例如分辨率）的摄像头。';
+            }
+
+            statusMessage.textContent = errorMessage;
+            console.error('getUserMedia error:', error);
+        }
+    });
+</script>
+
+</body>
+</html>
