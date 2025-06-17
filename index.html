@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>前置摄像头预览</title>
+    <title>前置摄像头预览（带分辨率选择）</title>
     <style>
         body, html {
             margin: 0;
@@ -21,7 +21,7 @@
         }
         #camera-container {
             width: 100%;
-            max-width: 600px;
+            max-width: 800px; /* 可以适当增大以容纳高分辨率视频 */
             position: relative;
             display: flex;
             justify-content: center;
@@ -34,11 +34,33 @@
             /* 水平翻转预览，使其看起来像镜子 */
             transform: scaleX(-1);
             display: none; /* 默认隐藏 */
+            background-color: #000;
         }
         #controls {
             padding: 20px;
+            max-width: 320px;
+            width: 90%;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+            color: #ccc;
+        }
+        #resolution-select {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border-radius: 8px;
+            border: 1px solid #555;
+            background-color: #333;
+            color: white;
         }
         #start-button {
+            width: 100%;
             font-size: 18px;
             padding: 12px 25px;
             cursor: pointer;
@@ -66,8 +88,18 @@
 </div>
 
 <div id="controls">
+    <div class="control-group">
+        <label for="resolution-select">选择分辨率:</label>
+        <select id="resolution-select">
+            <option value="640x480">640 x 480 (VGA)</option>
+            <option value="1280x720" selected>1280 x 720 (HD)</option>
+            <option value="1920x1080">1920 x 1080 (Full HD)</option>
+            <option value="3840x2160">3840 x 2160 (4K)</option>
+        </select>
+    </div>
+
     <button id="start-button">启动前置摄像头</button>
-    <p id="status-message">请点击按钮以授权并启动摄像头</p>
+    <p id="status-message">请选择分辨率，然后点击按钮启动摄像头</p>
 </div>
 
 <script>
@@ -75,47 +107,50 @@
     const videoElement = document.getElementById('camera-preview');
     const startButton = document.getElementById('start-button');
     const statusMessage = document.getElementById('status-message');
+    const resolutionSelect = document.getElementById('resolution-select'); // 新增
 
     // 监听按钮点击事件
     startButton.addEventListener('click', async () => {
-        // 检查浏览器是否支持 mediaDevices API
         if (!('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices)) {
             statusMessage.textContent = '错误：您的浏览器不支持摄像头访问 API。';
             return;
         }
 
-        statusMessage.textContent = '正在请求摄像头权限...';
+        // 从下拉菜单获取选定的分辨率值
+        const selectedResolution = resolutionSelect.value.split('x');
+        const width = parseInt(selectedResolution[0]);
+        const height = parseInt(selectedResolution[1]);
+
+        statusMessage.textContent = `正在请求 ${width}x${height} 分辨率的摄像头权限...`;
 
         // 定义要请求的媒体类型和约束
-        // facingMode: 'user' 表示请求前置摄像头
-        // facingMode: 'environment' 表示请求后置摄像头
+        // 使用 ideal 来表示期望值，如果摄像头不支持，浏览器会尝试寻找最接近的可用值
         const constraints = {
             video: {
-                facingMode: 'user', // 使用前置摄像头
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
+                facingMode: 'user',
+                width: { ideal: width },
+                height: { ideal: height }
             },
-            audio: false // 我们不需要音频
+            audio: false
         };
 
         try {
-            // 请求访问摄像头
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            // 如果已有视频流在播放，先停止它
+            if (videoElement.srcObject) {
+                videoElement.srcObject.getTracks().forEach(track => track.stop());
+            }
 
-            // 将摄像头捕获的视频流赋值给 video 元素的 srcObject
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
             videoElement.srcObject = stream;
 
-            // 一旦视频开始播放，就隐藏按钮和状态消息
             videoElement.onloadedmetadata = () => {
                 statusMessage.textContent = '摄像头已启动！';
-                videoElement.style.display = 'block'; // 显示 video 元素
-                startButton.style.display = 'none';   // 隐藏按钮
-                // 1秒后淡出状态消息
-                setTimeout(() => { statusMessage.style.transition = 'opacity 1s'; statusMessage.style.opacity = '0'; }, 1000);
+                videoElement.style.display = 'block';
+                // 隐藏整个控制区，让视频区域更突出
+                document.getElementById('controls').style.display = 'none';
             };
 
         } catch (error) {
-            // 处理可能发生的错误
             let errorMessage = '访问摄像头时发生未知错误。';
             if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
                 errorMessage = '错误：您拒绝了摄像头访问权限。';
@@ -124,7 +159,8 @@
             } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
                 errorMessage = '错误：无法读取摄像头。它可能正在被其他应用使用。';
             } else if (error.name === 'OverconstrainedError' || error.name === 'ConstraintNotSatisfiedError') {
-                errorMessage = '错误：找不到满足要求（例如分辨率）的摄像头。';
+                // 这个错误现在很重要，当摄像头不支持所选分辨率时会触发
+                errorMessage = `错误：您的摄像头不支持 ${width}x${height} 分辨率。请尝试选择一个较低的分辨率。`;
             }
 
             statusMessage.textContent = errorMessage;
